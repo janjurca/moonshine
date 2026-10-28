@@ -4,6 +4,12 @@ All notable user-facing changes to Moonshine Voice are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Please keep the bullets high level, and no more than about 200 characters.
 
+## [Unreleased]
+
+### Changed
+
+- Lines are decoded with 0.5 s of silence appended (`end_of_segment_padding`), so the last word of a line is no longer read without right context; tightly cut Czech parliamentary clips went from 18.0 % to 13.3 % WER, matching the PyTorch reference.
+
 ## [0.1.5]
 
 ### Added

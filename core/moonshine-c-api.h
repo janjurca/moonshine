@@ -417,6 +417,11 @@ MOONSHINE_EXPORT const char *moonshine_transcript_to_string(
    decoder on in-progress lines so the transcript can update while someone
    is still talking. Set false to encode (and diarize) as audio arrives
    but wait until the line is complete before decoding.
+   Pass ``end_of_segment_padding`` (seconds, default 0.5) to control the
+   silence appended to a line's audio before its final decode: the streaming
+   encoder reads the last 320 ms with no right context, so a word that ends
+   exactly where the line was cut is often misread without it. The padding
+   is not part of the line's audio, duration or word timings; 0 disables.
    Pass ``keyterms`` (comma-separated terms, e.g.
    ``Kubernetes,Anushka Sharma,ANSI/ISO``) to bias the decoder towards words it
    would otherwise be unlikely to produce - jargon, product names, contact

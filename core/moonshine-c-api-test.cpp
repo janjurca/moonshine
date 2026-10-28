@@ -490,6 +490,7 @@ TEST_CASE("moonshine-test-v2") {
         {"vad_hop_size", "512"},
         {"vad_look_behind_sample_count", "8192"},
         {"vad_max_segment_duration", "15.0"},
+        {"end_of_segment_padding", "0.5"},
         {"max_tokens_per_second", "6.5"},
         {"identify_speakers", "true"},
         {"diarization_model_dir", "diarization"},

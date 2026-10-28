@@ -47,6 +47,7 @@ Passed to `Transcriber(..., options=…)`, MicTranscriber `.options()`, and `moo
 | `vad_hop_size` | `512` | VAD hop size in samples. |
 | `vad_look_behind_sample_count` | `8192` | Samples to prepend when speech starts (compensates for averaged VAD lag), at 16 kHz. |
 | `vad_max_segment_duration` | `15` | Maximum line length in seconds before a forced complete; threshold ramps down late in the segment. |
+| `end_of_segment_padding` | `0.5` | Seconds of silence appended to a line's audio before its final decode. The streaming encoder reads the last 320 ms with no right context, so a word that ends exactly at the cut is often misread; the padding gives it that context. Not part of the line's audio, duration or word timings. `0` disables. |
 | `save_input_wav_path` | (none) | Folder path: write received audio as 16 kHz mono WAVs for debugging. |
 | `log_ort_run` | false | Log ONNX Runtime inference runs and timings. |
 | `word_timestamps` | false | Fill each line's `words` array. Needs the attention decoder asset. Implied by `identify_speakers`. |

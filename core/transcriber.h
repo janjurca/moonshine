@@ -185,6 +185,15 @@ struct TranscriberOptions {
   int32_t vad_hop_size = 512;
   size_t vad_look_behind_sample_count = 8192;
   float vad_max_segment_duration = 15.0f;
+  // Seconds of silence appended to a segment before its final encode. The
+  // streaming encoder emits the last `total_lookahead` frames (320 ms) with
+  // no right context when a segment closes, and words that end right at the
+  // cut are mis-read: on tightly cut parliamentary clips (VoxPopuli cs) the
+  // runtime scored 18.0 % WER against 13.3 % for the same weights run on
+  // the whole clip in PyTorch; 0.5 s of trailing zeros closed the gap
+  // exactly. The padding is not part of the line's audio or timing; set 0
+  // to disable.
+  float end_of_segment_padding = 0.5f;
   float max_tokens_per_second = 6.5f;
   // When true, streaming re-decodes verify the previous hypothesis with
   // decode_full and continue from the first mismatch instead of greedy
@@ -262,6 +271,12 @@ class Transcriber {
   // Track current segment for incremental processing
   uint64_t current_streaming_segment_id = UINT64_MAX;
   size_t streaming_samples_processed = 0;
+  // Set once the current segment's final encode ran with
+  // `end_of_segment_padding` appended (a complete segment is never padded
+  // twice); the count feeds the word-timestamp scale, which otherwise
+  // divides the unpadded duration by an encoder length that includes it.
+  bool streaming_segment_padded = false;
+  size_t streaming_segment_pad_samples = 0;
   std::vector<int> last_streaming_tokens;
 
   TranscriberStreamMap streams;

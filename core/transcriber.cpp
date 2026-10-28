@@ -1058,8 +1058,11 @@ void Transcriber::update_transcript_from_segments(
       if (this->options.word_timestamps &&
           !this->streaming_model->cross_attention_buffer.empty() &&
           !this->last_streaming_tokens.empty()) {
+        // The encoder length E covers the segment plus the trailing padding
+        // of its final encode, so the per-frame time must too.
         float seg_duration =
-            segment.audio_data.size() / (float)INTERNAL_SAMPLE_RATE;
+            (segment.audio_data.size() + this->streaming_segment_pad_samples) /
+            (float)INTERNAL_SAMPLE_RATE;
         int L = this->streaming_model->config.depth;
         int total_steps = this->streaming_model->cross_attn_steps / L;
         int H = this->streaming_model->cross_attn_heads;
@@ -1359,14 +1362,38 @@ std::string *Transcriber::transcribe_segment_with_streaming_model(
     this->streaming_state.reset(config);
     this->current_streaming_segment_id = segment_id;
     this->streaming_samples_processed = 0;
+    this->streaming_segment_padded = false;
+    this->streaming_segment_pad_samples = 0;
     this->last_streaming_tokens.clear();
   }
 
   size_t new_samples_start = this->streaming_samples_processed;
+  const bool pad_final =
+      is_final && !this->streaming_segment_padded &&
+      this->options.end_of_segment_padding > 0.0f;
 
-  if (new_samples_start < audio_length) {
+  if (new_samples_start < audio_length || pad_final) {
     const float *new_audio_data = audio_data + new_samples_start;
     size_t new_audio_length = audio_length - new_samples_start;
+    // The final encode of a segment gets `end_of_segment_padding` seconds of
+    // zeros after the last real sample, rounded up so that the leftover
+    // samples plus the padding form whole 80 ms chunks (see below). Without
+    // it the encoder sees the last word with no right context and the
+    // sub-chunk remainder is never fed at all.
+    std::vector<float> padded_audio;
+    if (pad_final) {
+      const size_t pad_samples = static_cast<size_t>(
+          std::lround(this->options.end_of_segment_padding *
+                      static_cast<float>(INTERNAL_SAMPLE_RATE)));
+      size_t total = new_audio_length + pad_samples;
+      total = ((total + 1279) / 1280) * 1280;
+      padded_audio.assign(new_audio_data, new_audio_data + new_audio_length);
+      padded_audio.resize(total, 0.0f);
+      this->streaming_segment_pad_samples = total - new_audio_length;
+      this->streaming_segment_padded = true;
+      new_audio_data = padded_audio.data();
+      new_audio_length = total;
+    }
 
     // 80ms at 16kHz. Feeding whole chunks and carrying the remainder over to
     // the next call is a hard requirement of the exported frontend graph, not a
@@ -1402,7 +1429,8 @@ std::string *Transcriber::transcribe_segment_with_streaming_model(
       throw std::runtime_error("Failed to encode: " + std::to_string(err));
     }
 
-    this->streaming_samples_processed += chunk_count * chunk_size;
+    this->streaming_samples_processed +=
+        pad_final ? audio_length - new_samples_start : chunk_count * chunk_size;
   }
 
   if (this->streaming_state.memory_len == 0) {
