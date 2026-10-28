@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Lines are decoded with 0.5 s of silence appended (`end_of_segment_padding`), so the last word of a line is no longer read without right context; tightly cut Czech parliamentary clips went from 18.0 % to 13.3 % WER, matching the PyTorch reference.
 
+### Fixed
+
+- `moonshine_transcribe_without_streaming` now closes the utterance that is still open when the audio ends. Since 0.1.5 it was handed to the final decode with `is_final` unset, so the streaming encoder withheld its 320 ms lookahead (and no end-of-segment padding applied): a clip whose speech runs to the last sample lost its last word. Live streams were not affected (stop_stream drains and closes the utterance).
+
 ## [0.1.5]
 
 ### Added

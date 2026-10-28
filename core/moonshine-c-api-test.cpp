@@ -477,6 +477,70 @@ TEST_CASE("moonshine-test-v2") {
     REQUIRE(line.is_new == 1);
     REQUIRE(line.has_text_changed == 1);
   }
+  SUBCASE("transcribe-without-streaming-closes-final-utterance") {
+    // A clip whose speech runs to the very last sample must transcribe the
+    // same as the identical clip followed by silence. Before the batch path
+    // closed its last utterance, that utterance was decoded with is_final
+    // unset: the streaming encoder withheld its lookahead and no
+    // end_of_segment_padding was applied, so the last word was cut short.
+    std::string wav_path = "beckett.wav";
+    REQUIRE(std::filesystem::exists(wav_path));
+    float* wav_data = nullptr;
+    size_t wav_data_size = 0;
+    int32_t wav_sample_rate = 0;
+    REQUIRE(load_wav_data(wav_path.c_str(), &wav_data, &wav_data_size,
+                          &wav_sample_rate));
+    REQUIRE(wav_sample_rate == 16000);
+    // Trim the trailing silence: keep audio up to the end of the last 20 ms
+    // window whose RMS is above the speech floor.
+    const size_t window = 320;
+    size_t tight_size = 0;
+    for (size_t end = wav_data_size - (wav_data_size % window); end >= window;
+         end -= window) {
+      double energy = 0.0;
+      for (size_t i = end - window; i < end; i++) {
+        energy += wav_data[i] * wav_data[i];
+      }
+      if (std::sqrt(energy / window) > 0.03) {
+        tight_size = end;
+        break;
+      }
+    }
+    REQUIRE(tight_size > 0);
+    REQUIRE(tight_size < wav_data_size);
+    std::vector<float> tight(wav_data, wav_data + tight_size);
+    std::vector<float> padded = tight;
+    padded.resize(tight.size() + 16000, 0.0f);
+
+    std::string root_model_path = "tiny-streaming-en";
+    REQUIRE(std::filesystem::exists(root_model_path));
+    int32_t transcriber_handle = moonshine_load_transcriber_from_files(
+        root_model_path.c_str(), MOONSHINE_MODEL_ARCH_TINY_STREAMING, nullptr,
+        0, MOONSHINE_HEADER_VERSION);
+    REQUIRE(transcriber_handle >= 0);
+
+    auto last_line_text = [&](std::vector<float>& audio) {
+      struct transcript_t* transcript = nullptr;
+      int32_t transcribe_error = moonshine_transcribe_without_streaming(
+          transcriber_handle, audio.data(), audio.size(), wav_sample_rate, 0,
+          &transcript);
+      REQUIRE(transcribe_error == MOONSHINE_ERROR_NONE);
+      REQUIRE(transcript != nullptr);
+      REQUIRE(transcript->line_count > 0);
+      const struct transcript_line_t& line =
+          transcript->lines[transcript->line_count - 1];
+      REQUIRE(line.text != nullptr);
+      REQUIRE(line.is_complete == 1);
+      return std::string(line.text);
+    };
+    const std::string tight_text = last_line_text(tight);
+    const std::string padded_text = last_line_text(padded);
+    CHECK(tight_text == padded_text);
+    CHECK(tight_text == "Fail better.");
+
+    moonshine_free_transcriber(transcriber_handle);
+    free(wav_data);
+  }
   SUBCASE("transcribe-valid-options") {
     int32_t model_arch = MOONSHINE_MODEL_ARCH_TINY;
     const moonshine_option_t options[] = {

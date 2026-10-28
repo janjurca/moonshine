@@ -673,7 +673,12 @@ void Transcriber::transcribe_without_streaming(
     std::lock_guard<std::mutex> lock(stream->vad_mutex);
     stream->start();
     stream->vad->process_audio(audio_data, (int32_t)audio_length, sample_rate);
-    stream->stop();
+    // The audio has ended, so an utterance that is still open is complete by
+    // definition: close it so its final decode runs with is_final set (the
+    // encoder flushes its lookahead and end_of_segment_padding applies).
+    // TranscriberStream::stop() deliberately leaves the utterance open for
+    // the stop_stream / transcribe_stream drain, which does not apply here.
+    stream->vad->stop();
     segments = *(stream->vad->get_segments());
   }
 
